@@ -1,0 +1,83 @@
+<workflow-app name="wf_dmacrm_productgroup_sdim" xmlns="uri:oozie:workflow:0.5">
+  <credentials>
+    <credential name="hive2" type="hive2">
+      <property>
+        <name>hive2.jdbc.url</name>
+        <value>${hive2_jdbc_url}</value>
+      </property>
+      <property>
+        <name>hive2.server.principal</name>
+        <value>${hive2_server_principal}</value>
+      </property>
+    </credential>
+  </credentials>
+    <start to="atom-header-productgroup_sdim"/>
+    <kill name="Kill">
+        <message>Action failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+	    <action name="atom-header-productgroup_sdim">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <main-class>ru.alfa.bi.hdp.orchestration.AtomHeader</main-class>
+            <java-opts>-DATOM_NAME=wf_dmacrm_productgroup_sdim -DCTL=wf_ctl_dmacrm_daily_dictionaries -DREG=wf_reg_dmacrm_daily -DDB_CONNECTION=${oracle_jdbc_url} -DDB_USER=${oracle_jdbc_user} -DDB_PASSWORD=${oracle_jdbc_password}</java-opts>
+            <file>/user/${user_name}/libs/generator-1.0-SNAPSHOT-jar-with-dependencies.jar#generator-1.0-SNAPSHOT-jar-with-dependencies.jar</file>
+			<file>/user/${user_name}/libs/ojdbc6.jar#ojdbc6.jar</file>
+        </java>
+        <ok to="sqoop-productgroup_sdim"/>
+        <error to="Kill"/>
+    </action>
+    <action name="sqoop-productgroup_sdim">
+        <sqoop xmlns="uri:oozie:sqoop-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+              <arg>import</arg>
+              <arg>--connect</arg>
+              <arg>jdbc:oracle:thin:@(DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = exa2-scan)(PORT = 1521))(ADDRESS = (PROTOCOL = TCP)(HOST = exa1-scan)(PORT = 1521))(CONNECT_DATA = (SERVER = DEDICATED)(SERVICE_NAME = RBPROD_TAF)))</arg>
+              <arg>--username</arg>
+              <arg>${ORA_USER_RBPROD_TAF}</arg>
+              <arg>--password</arg>
+              <arg>${ORA_PASSWORD_RBPROD_TAF}</arg>
+              <arg>--compression-codec</arg>
+              <arg>org.apache.hadoop.io.compress.SnappyCodec</arg>
+              <arg>--as-parquetfile</arg>
+              <arg>--delete-target-dir</arg>
+              <arg>--target-dir</arg>
+              <arg>${PATH_TO_TMP}/rbprod_taf/productgroup_sdim_tmp</arg>
+              <arg>--query</arg>
+              <arg>SELECT  JOB_INSERT , JOB_UPDATE , to_char(AS_OF_DAY, 'yyyy-MM-dd') as AS_OF_DAY, EMIX , DELETED_FLAG , DEFAULT_FLAG , UK , PARENT_UK , PRODUCTGROUPTYPE_UK , CCODE , NAME  FROM dmacrm.productgroup_sdim WHERE $CONDITIONS</arg>
+              <arg>-m</arg>
+              <arg>1</arg>
+			  <arg>--map-column-java</arg>
+              <arg>JOB_INSERT=Integer,JOB_UPDATE=Integer,EMIX=Integer,UK=Integer,PARENT_UK=Integer,PRODUCTGROUPTYPE_UK=Integer</arg>
+        </sqoop>
+        <ok to="hive2-productgroup_sdim"/>
+        <error to="Kill"/>
+    </action>
+    <action name="hive2-productgroup_sdim" cred="hive2">
+        <hive2 xmlns="uri:oozie:hive2-action:0.1">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <jdbc-url>${hive2_jdbc_url}</jdbc-url>
+            <script>hive/hive_load_no_part.hql</script>
+              <param>DATABASE=${DATABASE}</param>
+              <param>TABLE_NAME=productgroup_sdim</param>
+              <param>TMP_DATABASE=${TMP_DATABASE}</param>
+        </hive2>
+        <ok to="atom-tail-productgroup_sdim"/>
+        <error to="Kill"/>
+    </action>
+	<action name="atom-tail-productgroup_sdim">
+        <java>
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <main-class>ru.alfa.bi.hdp.orchestration.AtomTail</main-class>
+            <java-opts>-DATOM_NAME=wf_dmacrm_productgroup_sdim -DDB_CONNECTION=${oracle_jdbc_url} -DDB_USER=${oracle_jdbc_user} -DDB_PASSWORD=${oracle_jdbc_password}</java-opts>
+            <file>/user/${user_name}/libs/generator-1.0-SNAPSHOT-jar-with-dependencies.jar#generator-1.0-SNAPSHOT-jar-with-dependencies.jar</file>
+            <file>/user/${user_name}/libs/ojdbc6.jar#ojdbc6.jar</file>
+        </java>
+        <ok to="End"/>
+        <error to="Kill"/>
+    </action>
+    <end name="End"/>
+</workflow-app>
